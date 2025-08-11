@@ -228,28 +228,28 @@ def parse_single_note(note_str, current_bpm, current_length):
     info = note_str
     
     # Check for [x:x] hold
-    hold = None
-    if '[' in note_str:
-        start_bracket = note_str.find('[')
-        end_bracket = note_str.find(']', start_bracket)
+    hold = fractions.Fraction(0)
+    while '[' in info:
+        start_bracket = info.find('[')
+        end_bracket = info.find(']', start_bracket)
         if end_bracket != -1:
-            length_part = note_str[start_bracket+1:end_bracket]
-        
+            length_part = info[start_bracket+1:end_bracket]
+
             if ':' in length_part:
                 parts = length_part.split(':')
                 if len(parts) == 2:
                     try:
                         denominator = int(parts[0])
                         numerator = int(parts[1])
-                        hold = fractions.Fraction(numerator, denominator)
+                        hold += fractions.Fraction(numerator, denominator)
                     except ValueError:
                         print(f"parse_single_note error: Invalid [content] in '{note_str}'")
             
             # Remove the length part from info
-            info = note_str[:start_bracket] + note_str[end_bracket+1:]
+            info = info[:start_bracket] + info[end_bracket+1:]
     
     # Use length override if present
-    if hold:
+    if hold != fractions.Fraction(0):
         return {
             'info': info.strip(),
             'bpm': current_bpm,
