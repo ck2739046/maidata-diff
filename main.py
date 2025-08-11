@@ -296,11 +296,27 @@ def compare_inotes(inote1, inote2):
             elif isinstance(note2, list):
                 note2_str = ', '.join(note_str(n) for n in note2)
 
-            # further handle xh and hx
-            note1_strr = note1_str.replace("xh", "hx")
-            note2_strr = note2_str.replace("xh", "hx")
+
+            # further handle diff
+            note1_strr = note1_str.lower()
+            note2_strr = note2_str.lower()
+            # ch c1h c2h
+            note1_strr = note1_strr.replace("c1h", "ch")
+            note2_strr = note2_strr.replace("c1h", "ch")
+            note1_strr = note1_strr.replace("c2h", "ch")
+            note2_strr = note2_strr.replace("c2h", "ch")
+            # xh hx
+            note1_strr = note1_strr.replace("xh", "hx")
+            note2_strr = note2_strr.replace("xh", "hx")
+            # > < ^
+            note1_strr = note1_strr.replace(">", "^")
+            note2_strr = note2_strr.replace(">", "^")
+            note1_strr = note1_strr.replace("<", "^")
+            note2_strr = note2_strr.replace("<", "^")
+            # treat as same
             if note1_strr == note2_strr:
-                continue  # Skip if only xh/hx difference
+                continue
+
 
             print(f"diff{i}: {note1_str}\n" +
                   f"{(6+len(str(i))) * ' '}" +
