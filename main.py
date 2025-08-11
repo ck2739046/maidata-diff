@@ -285,6 +285,7 @@ def compare_inotes(inote1, inote2):
         note2 = inote2[i] if i < len(inote2) else None
         
         if note1 != note2:
+
             if isinstance(note1, dict):
                 note1_str = note_str(note1)
             elif isinstance(note1, list):
@@ -294,6 +295,12 @@ def compare_inotes(inote1, inote2):
                 note2_str = note_str(note2)
             elif isinstance(note2, list):
                 note2_str = ', '.join(note_str(n) for n in note2)
+
+            # further handle xh and hx
+            note1_strr = note1_str.replace("xh", "hx")
+            note2_strr = note2_str.replace("xh", "hx")
+            if note1_strr == note2_strr:
+                continue  # Skip if only xh/hx difference
 
             print(f"diff{i}: {note1_str}\n" +
                   f"{(6+len(str(i))) * ' '}" +
