@@ -275,6 +275,29 @@ def compare_inotes(inote1, inote2):
             note_str = f"'{note['info']}' {note['bpm']}_{note['length']}"
         return note_str
     
+    def get_context(inote_list, index, context_size=5):
+        start = max(0, index - context_size)
+        end = min(len(inote_list), index + context_size + 1)
+        # Get near notes
+        context_notes = []
+        for i in range(start, end):
+            if i < len(inote_list):
+                note = inote_list[i]
+                if isinstance(note, dict):
+                    context_notes.append(note['info'])
+                elif isinstance(note, list):
+                    context_notes.append('/'.join(n['info'] for n in note))
+            else:
+                context_notes.append('')
+        # Construct context strings
+        current_pos = index - start
+        if current_pos < len(context_notes):
+            current_note = context_notes[current_pos]
+            before = ','.join(context_notes[:current_pos])[-10:] if current_pos > 0 else ''
+            after = ','.join(context_notes[current_pos+1:])[:10] if current_pos < len(context_notes)-1 else ''
+            return before, current_note, after
+        return '', '', ''
+    
     if inote1 == inote2:
         print("No differnce found.")
         return
@@ -317,11 +340,20 @@ def compare_inotes(inote1, inote2):
             if note1_strr == note2_strr:
                 continue
 
+            # Get context for both inotes
+            before1, current1, after1 = get_context(inote1, i)
+            before2, current2, after2 = get_context(inote2, i)
+            context1 = f":: {before1} + {current1} + {after1}"
+            context2 = f":: {before2} + {current2} + {after2}"
 
             print(f"diff{i}: {note1_str}\n" +
                   f"{(6+len(str(i))) * ' '}" +
-                  f"{note2_str}")
-            
+                  f"{context1}\n" +
+                  f"{(6+len(str(i))) * ' '}" +
+                  f"{note2_str}\n" +
+                  f"{(6+len(str(i))) * ' '}" +
+                  f"{context2}")
+
             # Ask user to continue
             while True:
                 user_input = input("Stop comparing? (y/n): ").strip().lower()
