@@ -300,11 +300,11 @@ def compare_inotes(inote1, inote2):
             # further handle diff
             note1_strr = note1_str.lower()
             note2_strr = note2_str.lower()
-            # ch c1h c2h
-            note1_strr = note1_strr.replace("c1h", "ch")
-            note2_strr = note2_strr.replace("c1h", "ch")
-            note1_strr = note1_strr.replace("c2h", "ch")
-            note2_strr = note2_strr.replace("c2h", "ch")
+            # c c1 c2
+            note1_strr = note1_strr.replace("c1", "c")
+            note2_strr = note2_strr.replace("c1", "c")
+            note1_strr = note1_strr.replace("c2", "c")
+            note2_strr = note2_strr.replace("c2", "c")
             # xh hx
             note1_strr = note1_strr.replace("xh", "hx")
             note2_strr = note2_strr.replace("xh", "hx")
