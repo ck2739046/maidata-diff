@@ -331,11 +331,17 @@ def compare_inotes(inote1, inote2):
             # xh hx
             note1_strr = note1_strr.replace("xh", "hx")
             note2_strr = note2_strr.replace("xh", "hx")
+            # xb bx
+            note1_strr = note1_strr.replace("xb", "bx")
+            note2_strr = note2_strr.replace("xb", "bx")
             # > < ^
             note1_strr = note1_strr.replace(">", "^")
             note2_strr = note2_strr.replace(">", "^")
             note1_strr = note1_strr.replace("<", "^")
             note2_strr = note2_strr.replace("<", "^")
+            # $
+            note1_strr = note1_strr.replace("$", "")
+            note2_strr = note2_strr.replace("$", "")
             # treat as same
             if note1_strr == note2_strr:
                 continue
