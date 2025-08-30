@@ -334,6 +334,9 @@ def compare_inotes(inote1, inote2):
             # xb bx
             note1_strr = note1_strr.replace("xb", "bx")
             note2_strr = note2_strr.replace("xb", "bx")
+            # hb bh
+            note1_strr = note1_strr.replace("hb", "bh")
+            note2_strr = note2_strr.replace("hb", "bh")
             # > < ^
             note1_strr = note1_strr.replace(">", "^")
             note2_strr = note2_strr.replace(">", "^")
@@ -378,6 +381,7 @@ def compare_inotes(inote1, inote2):
 def main():
 
     lv, txt1, txt2 = parse_args()
+
     inote1 = get_inote(lv, txt1, 1)
     inote2 = get_inote(lv, txt2, 2)
     inote1_trans = translate_inote(inote1)
