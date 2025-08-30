@@ -26,6 +26,12 @@ def parse_args():
         lv = args.positional[0]
         txt1 = args.positional[1]
         txt2 = args.positional[2]
+    elif len(args.positional) == 0 and not args.lv and not args.txt1 and not args.txt2:
+        # 没有任何参数时，分别询问用户输入
+        print("Please provide the following parameters:")
+        lv = input("Enter inote level (2-7): ").strip()
+        txt1 = input("Enter path to txt file 1: ").strip()
+        txt2 = input("Enter path to txt file 2: ").strip()
     else:
         print("args error: invalid args")
         print("-----------")
