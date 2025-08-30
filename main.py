@@ -185,6 +185,19 @@ def translate_inote(inote):
         
         i += 1
     
+    # 修改最后一个note的delay为0（特殊情况处理）
+    if result and len(result) > 1:  # 确保有note并且不只是开头的占位符
+        last_note = result[-1]
+        if isinstance(last_note, dict):
+            # 单个note
+            if last_note['info'] != '@':  # 不是占位符
+                last_note['length'] = fractions.Fraction(0, 1)
+        elif isinstance(last_note, list):
+            # 同时的多个notes
+            for note in last_note:
+                if note['info'] != '@':  # 不是占位符
+                    note['length'] = fractions.Fraction(0, 1)
+    
     return result
 
 
