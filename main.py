@@ -94,12 +94,22 @@ def translate_inote(inote):
     result = []
     current_bpm = None
     current_length = None
+    added_initial_placeholder = False
     
     i = 0
     while i < len(segments):
         segment = segments[i].strip()
         if segment == 'E': break  # End of inote
         note_info, current_bpm, current_length = parse_bpm_length(segment, current_bpm, current_length, i)
+
+        # 开头默认添加一个时长为0的占位符
+        if not added_initial_placeholder and current_bpm is not None and current_length is not None:
+            result.append({
+                'info': '@',
+                'bpm': current_bpm,
+                'length': fractions.Fraction(0, 1)
+            })
+            added_initial_placeholder = True
         
         if note_info:
             # Parse this segment as notes
@@ -363,18 +373,18 @@ def compare_inotes(inote1, inote2):
                   f"{(6+len(str(i))) * ' '}" +
                   f"{context2}")
 
-            # Ask user to continue
-            while True:
-                user_input = input("Stop comparing? (y/n): ").strip().lower()
-                if user_input == 'y':
-                    print(f"Comparison stopped.")
-                    return
-                else:
-                    # Move cursor up one line and clear it to overwrite the prompt
-                    print("\033[A\033[K", end="")
-                    break
+            # # Ask user to continue
+            # while True:
+            #     user_input = input("Stop comparing? (y/n): ").strip().lower()
+            #     if user_input == 'y':
+            #         print(f"Comparison stopped.")
+            #         return
+            #     else:
+            #         # Move cursor up one line and clear it to overwrite the prompt
+            #         print("\033[A\033[K", end="")
+            #         break
     
-    print(f"Reach end if inote.")
+    print(f"Reach end of inote.")
 
 
 
