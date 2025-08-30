@@ -65,8 +65,10 @@ def get_inote(lv, txt, txt_num):
     target_inote = f"&inote_{lv}="
     inote_content = []
     found = False
+    start_line = None
+    line_mapping = []  # 记录每个字符对应的行号
     
-    for line in lines:
+    for line_num, line in enumerate(lines, 1):
         line = line.strip()
         if not line: continue
         if line.startswith('||'): continue # Skip comment
@@ -74,9 +76,13 @@ def get_inote(lv, txt, txt_num):
         # Find the target inote
         if not found and line.startswith(target_inote):
             found = True
+            start_line = line_num
             content = line[len(target_inote):].strip()
             if content:
                 inote_content.append(content)
+                # 为这部分内容的每个字符记录行号
+                for _ in content:
+                    line_mapping.append(line_num)
             continue
         # If we found the target inote and encounter another inote, stop
         if found and line.startswith('&inote_'):
@@ -84,13 +90,24 @@ def get_inote(lv, txt, txt_num):
         # Append line to inote
         if found:
             inote_content.append(line)
+            # 为这行内容的每个字符记录行号
+            for _ in line:
+                line_mapping.append(line_num)
             continue
     
     if not found:
         print(f"get_inote error: inote_{lv} not found in {txt_num}")
         sys.exit(1)
 
-    return ''.join(inote_content).replace('\n', '')
+    return ''.join(inote_content).replace('\n', ''), start_line, line_mapping
+
+
+
+def get_line_number_for_position(line_mapping, position):
+
+    if position < 0 or position >= len(line_mapping):
+        return None
+    return line_mapping[position]
 
 
 
@@ -113,7 +130,8 @@ def translate_inote(inote):
             result.append({
                 'info': '@',
                 'bpm': current_bpm,
-                'length': fractions.Fraction(0, 1)
+                'length': fractions.Fraction(0, 1),
+                'segment_index': -1  # 特殊标记为开头占位符
             })
             added_initial_placeholder = True
         
@@ -121,6 +139,12 @@ def translate_inote(inote):
             # Parse this segment as notes
             parsed_note = parse_note_segment(note_info, current_bpm, current_length)
             if parsed_note:
+                # Add segment index for context tracking
+                if isinstance(parsed_note, dict):
+                    parsed_note['segment_index'] = i
+                elif isinstance(parsed_note, list):
+                    for note in parsed_note:
+                        note['segment_index'] = i
                 result.append(parsed_note)
         else:
             # No info segment means placeholder note '@'
@@ -154,6 +178,7 @@ def translate_inote(inote):
                     'info': '@',
                     'bpm': current_bpm,
                     'length': placeholder_length,
+                    'segment_index': i
                 })
 
             i = j - 1  # j-1 because will i++ below
@@ -161,6 +186,43 @@ def translate_inote(inote):
         i += 1
     
     return result
+
+
+
+def get_context_from_original(inote_raw, segment_index, context_chars=20):
+
+    if segment_index < 0:  # 开头占位符
+        return inote_raw[:context_chars*2] if len(inote_raw) > context_chars*2 else inote_raw
+    
+    segments = inote_raw.split(',')
+    if segment_index >= len(segments):
+        return ""
+    
+    # 找到目标segment在原始字符串中的位置
+    current_pos = 0
+    for i in range(segment_index):
+        current_pos += len(segments[i]) + 1  # +1 for comma
+    
+    # 获取目标segment
+    target_segment = segments[segment_index]
+    segment_start = current_pos
+    segment_end = current_pos + len(target_segment)
+    
+    # 获取前后context_chars个字符
+    context_start = max(0, segment_start - context_chars)
+    context_end = min(len(inote_raw), segment_end + context_chars)
+    
+    context = inote_raw[context_start:context_end]
+    # 标记目标segment的位置
+    relative_start = segment_start - context_start
+    relative_end = segment_end - context_start
+    
+    if relative_start >= 0 and relative_end <= len(context):
+        context = (context[:relative_start] + 
+                  ">>>" + context[relative_start:relative_end] + "<<<" + 
+                  context[relative_end:])
+    
+    return context
 
 
 
@@ -282,115 +344,240 @@ def parse_single_note(note_str, current_bpm, current_length):
     
 
 
-def compare_inotes(inote1, inote2):
+def compare_inotes(inote1_trans, inote2_trans, inote1_raw, inote2_raw, start_line1, start_line2, txt1, txt2, line_mapping1, line_mapping2):
 
     def note_str(note):
         if note.get('hold'):
-            note_str = f"'{note['info']}[{note['hold']}]' {note['bpm']}_{note['length']}"
+            note_str = f"'{note['info']}[{note['hold']}]': bpm-{note['bpm']}, delay-{note['length']}"
         else:
-            note_str = f"'{note['info']}' {note['bpm']}_{note['length']}"
+            note_str = f"'{note['info']}': bpm-{note['bpm']}, delay-{note['length']}"
         return note_str
     
-    def get_context(inote_list, index, context_size=5):
-        start = max(0, index - context_size)
-        end = min(len(inote_list), index + context_size + 1)
-        # Get near notes
-        context_notes = []
-        for i in range(start, end):
-            if i < len(inote_list):
-                note = inote_list[i]
-                if isinstance(note, dict):
-                    context_notes.append(note['info'])
-                elif isinstance(note, list):
-                    context_notes.append('/'.join(n['info'] for n in note))
-            else:
-                context_notes.append('')
-        # Construct context strings
-        current_pos = index - start
-        if current_pos < len(context_notes):
-            current_note = context_notes[current_pos]
-            before = ','.join(context_notes[:current_pos])[-10:] if current_pos > 0 else ''
-            after = ','.join(context_notes[current_pos+1:])[:10] if current_pos < len(context_notes)-1 else ''
-            return before, current_note, after
-        return '', '', ''
-    
-    if inote1 == inote2:
-        print("No differnce found.")
+    if inote1_trans == inote2_trans:
+        print("No difference found.")
         return
     
-    max_len = max(len(inote1), len(inote2))
+    # 收集所有错误
+    errors = []
+    
+    max_len = max(len(inote1_trans), len(inote2_trans))
     for i in range(max_len):
-        note1 = inote1[i] if i < len(inote1) else None
-        note2 = inote2[i] if i < len(inote2) else None
+        note1 = inote1_trans[i] if i < len(inote1_trans) else None
+        note2 = inote2_trans[i] if i < len(inote2_trans) else None
         
         if note1 != note2:
 
-            if isinstance(note1, dict):
-                note1_str = note_str(note1)
-            elif isinstance(note1, list):
-                note1_str = ', '.join(note_str(n) for n in note1)
+            if note1:
+                if isinstance(note1, dict):
+                    note1_str = note_str(note1)
+                    segment_idx1 = note1.get('segment_index', -1)
+                elif isinstance(note1, list):
+                    note1_str = ', '.join(note_str(n) for n in note1)
+                    segment_idx1 = note1[0].get('segment_index', -1) if note1 else -1
+            else:
+                note1_str = "None"
+                segment_idx1 = -1
             
-            if isinstance(note2, dict):
-                note2_str = note_str(note2)
-            elif isinstance(note2, list):
-                note2_str = ', '.join(note_str(n) for n in note2)
-
+            if note2:
+                if isinstance(note2, dict):
+                    note2_str = note_str(note2)
+                    segment_idx2 = note2.get('segment_index', -1)
+                elif isinstance(note2, list):
+                    note2_str = ', '.join(note_str(n) for n in note2)
+                    segment_idx2 = note2[0].get('segment_index', -1) if note2 else -1
+            else:
+                note2_str = "None"
+                segment_idx2 = -1
 
             # further handle diff
-            note1_strr = note1_str.lower()
-            note2_strr = note2_str.lower()
-            # c c1 c2
-            note1_strr = note1_strr.replace("c1", "c")
-            note2_strr = note2_strr.replace("c1", "c")
-            note1_strr = note1_strr.replace("c2", "c")
-            note2_strr = note2_strr.replace("c2", "c")
-            # xh hx
-            note1_strr = note1_strr.replace("xh", "hx")
-            note2_strr = note2_strr.replace("xh", "hx")
-            # xb bx
-            note1_strr = note1_strr.replace("xb", "bx")
-            note2_strr = note2_strr.replace("xb", "bx")
-            # hb bh
-            note1_strr = note1_strr.replace("hb", "bh")
-            note2_strr = note2_strr.replace("hb", "bh")
-            # > < ^
-            note1_strr = note1_strr.replace(">", "^")
-            note2_strr = note2_strr.replace(">", "^")
-            note1_strr = note1_strr.replace("<", "^")
-            note2_strr = note2_strr.replace("<", "^")
-            # $
-            note1_strr = note1_strr.replace("$", "")
-            note2_strr = note2_strr.replace("$", "")
-            # treat as same
-            if note1_strr == note2_strr:
+            note1_str_norm = note1_str.replace("c1", "C").replace("c2", "C").replace("C1", "C")
+            note2_str_norm = note2_str.replace("c1", "C").replace("c2", "C").replace("C1", "C")
+            note1_str_norm = note1_str_norm.replace("xh", "hx").replace("xb", "bx").replace("hb", "bh")
+            note2_str_norm = note2_str_norm.replace("xh", "hx").replace("xb", "bx").replace("hb", "bh")
+            note1_str_norm = note1_str_norm.replace(">", "^").replace("<", "^")
+            note2_str_norm = note2_str_norm.replace(">", "^").replace("<", "^")
+            note1_str_norm = note1_str_norm.replace("$", "")
+            note2_str_norm = note2_str_norm.replace("$", "")
+            
+            if note1_str_norm == note2_str_norm:
                 continue
 
-            # Get context for both inotes
-            before1, current1, after1 = get_context(inote1, i)
-            before2, current2, after2 = get_context(inote2, i)
-            context1 = f":: {before1} + {current1} + {after1}"
-            context2 = f":: {before2} + {current2} + {after2}"
+            # 计算错误在原始字符串中的位置
+            pos1 = get_segment_position(inote1_raw, segment_idx1)
+            pos2 = get_segment_position(inote2_raw, segment_idx2)
+            
+            errors.append({
+                'diff_index': i,
+                'note1_str': note1_str,
+                'note2_str': note2_str,
+                'segment_idx1': segment_idx1,
+                'segment_idx2': segment_idx2,
+                'pos1': pos1,
+                'pos2': pos2
+            })
 
-            print(f"diff{i}: {note1_str}\n" +
-                  f"{(6+len(str(i))) * ' '}" +
-                  f"{context1}\n" +
-                  f"{(6+len(str(i))) * ' '}" +
-                  f"{note2_str}\n" +
-                  f"{(6+len(str(i))) * ' '}" +
-                  f"{context2}")
+    if not errors:
+        print("No difference found.")
+        return
 
-            # # Ask user to continue
-            # while True:
-            #     user_input = input("Stop comparing? (y/n): ").strip().lower()
-            #     if user_input == 'y':
-            #         print(f"Comparison stopped.")
-            #         return
-            #     else:
-            #         # Move cursor up one line and clear it to overwrite the prompt
-            #         print("\033[A\033[K", end="")
-            #         break
+    # 分组处理错误 - 基于位置相近性
+    grouped_errors = group_nearby_errors(errors)
     
+    # 打印分组的错误
+    for group_idx, error_group in enumerate(grouped_errors):
+        print_error_group(error_group, group_idx, inote1_raw, inote2_raw, start_line1, start_line2, txt1, txt2, line_mapping1, line_mapping2)
+
     print(f"Reach end of inote.")
+
+    # # Ask user to continue
+    # while True:
+    #     user_input = input("Stop comparing? (y/n): ").strip().lower()
+    #     if user_input == 'y':
+    #         print(f"Comparison stopped.")
+    #         return
+    #     else:
+    #         # Move cursor up one line and clear it to overwrite the prompt
+    #         print("\033[A\033[K", end="")
+    #         break
+
+
+
+def get_segment_position(inote_raw, segment_index):
+
+    if segment_index < 0:
+        return 0
+    
+    segments = inote_raw.split(',')
+    if segment_index >= len(segments):
+        return len(inote_raw)
+    
+    current_pos = 0
+    for i in range(segment_index):
+        current_pos += len(segments[i]) + 1  # +1 for comma
+    
+    return current_pos
+
+
+
+def group_nearby_errors(errors, max_distance=6):
+
+    if not errors:
+        return []
+    
+    # 按位置排序
+    errors.sort(key=lambda x: min(x['pos1'], x['pos2']))
+    
+    groups = []
+    current_group = [errors[0]]
+    
+    for i in range(1, len(errors)):
+        curr_error = errors[i]
+        last_error = current_group[-1]
+        
+        # 检查是否相近（基于两个文件中的最小距离）
+        dist1 = abs(curr_error['pos1'] - last_error['pos1'])
+        dist2 = abs(curr_error['pos2'] - last_error['pos2'])
+        min_distance = min(dist1, dist2)
+        
+        if min_distance <= max_distance:
+            current_group.append(curr_error)
+        else:
+            groups.append(current_group)
+            current_group = [curr_error]
+    
+    groups.append(current_group)
+    return groups
+
+
+
+def print_error_group(error_group, group_idx, inote1_raw, inote2_raw, start_line1, start_line2, txt1, txt2, line_mapping1, line_mapping2):
+
+    # 计算合适的上下文范围
+    all_positions1 = [err['pos1'] for err in error_group]
+    all_positions2 = [err['pos2'] for err in error_group]
+    
+    context_chars = 20
+    
+    # 为文件生成上下文
+    context1, markers1 = get_context_with_markers(inote1_raw, error_group, 'pos1', 'segment_idx1', context_chars)
+    context2, markers2 = get_context_with_markers(inote2_raw, error_group, 'pos2', 'segment_idx2', context_chars)
+    
+    # 获取实际行号
+    actual_line1 = get_line_number_for_position(line_mapping1, min(all_positions1)) or start_line1
+    actual_line2 = get_line_number_for_position(line_mapping2, min(all_positions2)) or start_line2
+    
+    # 对齐行号 (使用后置空格填充)
+    line1_str = str(actual_line1) + " " * (3 - len(str(actual_line1)))
+    line2_str = str(actual_line2) + " " * (3 - len(str(actual_line2)))
+
+    print(f"Error group {group_idx + 1}:")
+    print(f"  Line {line1_str}: {context1}")
+    print(f"            {markers1}")
+    for err in error_group:
+        print(f"    diff{err['diff_index']}: {err['note1_str']}")
+    
+    print(f"\n  Line {line2_str}: {context2}")
+    print(f"            {markers2}")
+    for err in error_group:
+        print(f"    diff{err['diff_index']}: {err['note2_str']}")
+    print()
+
+
+
+def get_context_with_markers(inote_raw, error_group, pos_key, segment_key, context_chars=20):
+
+    positions = [err[pos_key] for err in error_group]
+    segment_indices = [err[segment_key] for err in error_group]
+    
+    if not positions:
+        return "", ""
+    
+    min_pos = min(positions)
+    max_pos = max(positions)
+    
+    # 计算上下文范围
+    context_start = max(0, min_pos - context_chars)
+    
+    # 需要考虑最长的segment来确定context_end
+    segments = inote_raw.split(',')
+    max_segment_end = max_pos
+    for pos, segment_idx in zip(positions, segment_indices):
+        if segment_idx >= 0 and segment_idx < len(segments):
+            segment_end = pos + len(segments[segment_idx])
+            max_segment_end = max(max_segment_end, segment_end)
+    
+    context_end = min(len(inote_raw), max_segment_end + context_chars)
+    
+    context = inote_raw[context_start:context_end]
+    
+    # 生成标记行
+    markers = [' '] * len(context)
+    
+    for i, (pos, segment_idx) in enumerate(zip(positions, segment_indices)):
+        if segment_idx < 0:  # 开头占位符
+            continue
+        if segment_idx >= len(segments):
+            continue
+            
+        # 计算segment在原始字符串中的实际范围
+        segment_start_in_raw = pos
+        segment_end_in_raw = pos + len(segments[segment_idx])
+        
+        # 计算在context中的相对位置
+        relative_start = segment_start_in_raw - context_start
+        relative_end = segment_end_in_raw - context_start
+        
+        # 确保边界正确
+        relative_start = max(0, relative_start)
+        relative_end = min(len(context), relative_end)
+        
+        # 在标记行中标记这个segment
+        if relative_start < len(markers) and relative_end > 0:
+            for j in range(relative_start, relative_end):
+                if 0 <= j < len(markers):
+                    markers[j] = '^'
+    
+    return context, ''.join(markers)
 
 
 
@@ -398,12 +585,12 @@ def main():
 
     lv, txt1, txt2 = parse_args()
 
-    inote1 = get_inote(lv, txt1, 1)
-    inote2 = get_inote(lv, txt2, 2)
-    inote1_trans = translate_inote(inote1)
-    inote2_trans = translate_inote(inote2)
-    compare_inotes(inote1_trans, inote2_trans)
-    
+    inote1_raw, start_line1, line_mapping1 = get_inote(lv, txt1, 1)
+    inote2_raw, start_line2, line_mapping2 = get_inote(lv, txt2, 2)
+    inote1_trans = translate_inote(inote1_raw)
+    inote2_trans = translate_inote(inote2_raw)
+    compare_inotes(inote1_trans, inote2_trans, inote1_raw, inote2_raw, start_line1, start_line2, txt1, txt2, line_mapping1, line_mapping2)
+
 
 if __name__ == "__main__":
     main()
