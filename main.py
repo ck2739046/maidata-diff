@@ -32,6 +32,10 @@ def parse_args():
         lv = input("Enter inote level (2-7): ").strip()
         txt1 = input("Enter path to txt file 1: ").strip()
         txt2 = input("Enter path to txt file 2: ").strip()
+        if txt1.startswith('"') and txt1.endswith('"'):
+            txt1 = txt1[1:-1]
+        if txt2.startswith('"') and txt2.endswith('"'):
+            txt2 = txt2[1:-1]
     else:
         print("args error: invalid args")
         print("-----------")
@@ -428,6 +432,8 @@ def compare_inotes(inote1_trans, inote2_trans, inote1_raw, inote2_raw, start_lin
                 'pos1': pos1,
                 'pos2': pos2
             })
+
+            # if i > 200: break
 
     if not errors:
         print("No difference found.")
