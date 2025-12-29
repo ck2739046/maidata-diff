@@ -255,7 +255,7 @@ def parse_bpm_length(segment, current_bpm, current_length, i):
             start = segment.find('(')
             end = segment.find(')', start)
             if end != -1:
-                current_bpm = int(segment[start+1:end])
+                current_bpm = round(float(segment[start+1:end]), 2)
                 segment = segment[:start] + segment[end+1:]
                 bpm_updated = True
         
